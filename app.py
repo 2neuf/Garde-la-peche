@@ -47,11 +47,6 @@ st.markdown("""
 
 st.write("")
 
-if st.button("EXERCICES"):
-    st.switch_page("pages/1_Exercices.py")
-
-if st.button("SÉANCES"):
-    st.switch_page("pages/2_Seances.py")
-
-if st.button("HISTORIQUE"):
-    st.switch_page("pages/3_Historique.py")
+st.page_link("pages/1_Exercices.py", label="EXERCICES", icon="🏋️")
+st.page_link("pages/2_Seances.py", label="SÉANCES", icon="🔥")
+st.page_link("pages/3_Historique.py", label="HISTORIQUE", icon="📅")
