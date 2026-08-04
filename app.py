@@ -10,88 +10,66 @@ st.set_page_config(
 if "page" not in st.session_state:
     st.session_state.page = "accueil"
 
-# ---------------- STYLE GLOBAL ----------------
+# Style global
 st.markdown("""
 <style>
-
-/* Fond noir */
 .stApp {
     background-color: #000000;
 }
 
-/* Supprime les marges Streamlit */
 .block-container {
-    max-width: 100% !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
+    max-width: 500px;
+    margin: auto;
+    padding-top: 2rem;
+    padding-bottom: 2rem;
 }
 
-/* Conteneur de la page d'accueil */
-.main-menu {
-    width: 100vw;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    gap: 2vh;
-}
-
-/* Gros boutons jaunes */
-.main-menu .stButton > button {
-    width: 92vw !important;
-    max-width: 480px !important;
-    height: 26vh !important;
-    border-radius: 32px !important;
-    border: none !important;
-    background: #FFD400 !important;
-    color: #000000 !important;
-    font-size: 2.1rem !important;
-    font-weight: 800 !important;
-    box-shadow: 0 0 25px rgba(255,212,0,0.18) !important;
-}
-
-/* Hover */
-.main-menu .stButton > button:hover {
-    background: #FFE04D !important;
-    color: #000000 !important;
-}
-
-/* Texte blanc partout */
-h1,h2,h3,p,label,span,div {
+h1, h2, h3, p, label, span, div {
     color: white !important;
 }
 
-/* Boutons des pages internes */
+/* Gros boutons accueil */
+.big-btn > button {
+    width: 100% !important;
+    height: 180px !important;
+    margin-bottom: 24px !important;
+    border-radius: 28px !important;
+    border: none !important;
+    background: #FFD400 !important;
+    color: #000000 !important;
+    font-size: 2rem !important;
+    font-weight: 800 !important;
+}
+
+/* Boutons normaux */
 .stButton > button {
     border-radius: 16px;
     background: #FFD400;
     color: #000000;
     font-weight: 700;
 }
-
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------- ACCUEIL ----------------
 if st.session_state.page == "accueil":
 
-    st.markdown('<div class="main-menu">', unsafe_allow_html=True)
-
+    st.markdown('<div class="big-btn">', unsafe_allow_html=True)
     if st.button("EXERCICES"):
         st.session_state.page = "exercices"
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
+    st.markdown('<div class="big-btn">', unsafe_allow_html=True)
     if st.button("SÉANCES"):
         st.session_state.page = "seances"
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
+    st.markdown('<div class="big-btn">', unsafe_allow_html=True)
     if st.button("HISTORIQUE"):
         st.session_state.page = "historique"
         st.rerun()
-
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------- EXERCICES ----------------
@@ -110,7 +88,7 @@ elif st.session_state.page == "exercices":
 
     st.markdown(
         """
-        <div style="background:#111;padding:18px;border-radius:18px;margin-bottom:12px;border:1px solid #222;">
+        <div style="background:#111;padding:18px;border-radius:18px;border:1px solid #222;">
             <b>Gainage</b><br>
             30 s
         </div>
