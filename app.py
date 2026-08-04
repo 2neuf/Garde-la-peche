@@ -42,10 +42,12 @@ def turso_query(statements):
 # Initialisation des tables SQLite dans Turso
 def init_db():
     queries = [
+        "DROP TABLE IF EXISTS historique;",
         "CREATE TABLE IF NOT EXISTS exercices (id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT UNIQUE NOT NULL, type TEXT NOT NULL);",
         "CREATE TABLE IF NOT EXISTS historique (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, detail TEXT NOT NULL);"
     ]
     turso_query(queries)
+
 
 init_db()
 
