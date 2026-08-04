@@ -2,65 +2,87 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 import time
-import libsql_client
+import requests
 
 # Configuration de la page
 st.set_page_config(page_title="Mon Coach Sport", page_icon="🏋️")
 
-# --- CONNEXION À TURSO VIA LIBSQL-CLIENT ---
-@st.cache_resource
-def get_client():
+# --- FONCTION REQUÊTE TURSO API HTTP ---
+def turso_query(statements):
+    """Exécute des requêtes SQL sur la base Turso via l'API HTTP Pipeline."""
     url = st.secrets["TURSO_DATABASE_URL"]
     token = st.secrets["TURSO_AUTH_TOKEN"]
-    # Conversion de l'URL 'libsql://' vers 'https://' pour l'API Https/Hrana
-    if url.startswith("libsql://"):
-        url = url.replace("libsql://", "https://")
-    client = libsql_client.create_client_sync(url=url, auth_token=token)
-    return client
+    
+    # Nettoyage de l'URL pour l'API HTTP
+    url = url.replace("libsql://", "https://").replace("https://https://", "https://")
+    api_url = f"{url}/v2/pipeline"
+    
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    
+    requests_payload = []
+    for stmt in statements:
+        if isinstance(stmt, str):
+            requests_payload.append({"type": "execute", "stmt": {"sql": stmt}})
+        elif isinstance(stmt, tuple):
+            sql, args = stmt
+            formatted_args = []
+            for arg in args:
+                formatted_args.append({"type": "text", "value": str(arg)})
+            requests_payload.append({"type": "execute", "stmt": {"sql": sql, "args": formatted_args}})
 
-client = get_client()
+    payload = {"requests": requests_payload}
+    
+    response = requests.post(api_url, json=payload, headers=headers)
+    response.raise_for_status()
+    return response.json()
 
 # Initialisation des tables SQLite dans Turso
 def init_db():
-    client.execute("""
-        CREATE TABLE IF NOT EXISTS exercices (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nom TEXT UNIQUE NOT NULL,
-            type TEXT NOT NULL
-        )
-    """)
-    client.execute("""
-        CREATE TABLE IF NOT EXISTS historique (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL,
-            exercice TEXT NOT NULL,
-            performance TEXT NOT NULL
-        )
-    """)
+    queries = [
+        "CREATE TABLE IF NOT EXISTS exercices (id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT UNIQUE NOT NULL, type TEXT NOT NULL);",
+        "CREATE TABLE IF NOT EXISTS historique (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, exercice TEXT NOT NULL, performance TEXT NOT NULL);"
+    ]
+    turso_query(queries)
 
 init_db()
 
 # --- FONCTIONS DE GESTION DES DONNÉES ---
 def get_exercices():
-    rs = client.execute("SELECT nom, type FROM exercices")
-    return [{"nom": row[0], "type": row[1]} for row in rs.rows]
+    res = turso_query(["SELECT nom, type FROM exercices"])
+    results = res["results"][0]["response"]["result"]
+    rows = results.get("rows", [])
+    exercices = []
+    for row in rows:
+        exercices.append({"nom": row[0]["value"], "type": row[1]["value"]})
+    return exercices
 
 def ajouter_exercice_db(nom, type_ex):
-    client.execute("INSERT INTO exercices (nom, type) VALUES (?, ?)", (nom, type_ex))
+    turso_query([("INSERT INTO exercices (nom, type) VALUES (?, ?)", (nom, type_ex))])
 
 def supprimer_exercice_db(nom):
-    client.execute("DELETE FROM exercices WHERE nom = ?", (nom,))
+    turso_query([("DELETE FROM exercices WHERE nom = ?", (nom,))])
 
 def ajouter_historique_db(date_str, exercice, performance):
-    client.execute("INSERT INTO historique (date, exercice, performance) VALUES (?, ?, ?)", (date_str, exercice, performance))
+    turso_query([("INSERT INTO historique (date, exercice, performance) VALUES (?, ?, ?)", (date_str, exercice, performance))])
 
 def get_historique_df():
-    rs = client.execute("SELECT date as Date, exercice as Exercice, performance as Performance FROM historique ORDER BY id DESC")
-    data = [dict(zip(["Date", "Exercice", "Performance"], row)) for row in rs.rows]
+    res = turso_query(["SELECT date, exercice, performance FROM historique ORDER BY id DESC"])
+    results = res["results"][0]["response"]["result"]
+    rows = results.get("rows", [])
+    data = []
+    for row in rows:
+        data.append({
+            "Date": row[0]["value"],
+            "Exercice": row[1]["value"],
+            "Performance": row[2]["value"]
+        })
     return pd.DataFrame(data)
 
 def supprimer_historique_db():
-    client.execute("DELETE FROM historique")
+    turso_query(["DELETE FROM historique"])
 
 # --- INITIALISATION SESSION STATE ---
 if "reset_counter" not in st.session_state:
