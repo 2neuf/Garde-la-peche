@@ -2,24 +2,78 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 import time
+import libsql_experimental as libsql
 
 # Configuration de la page
 st.set_page_config(page_title="Mon Coach Sport", page_icon="🏋️")
 
-# Initialisation des données locales
-if "exercices" not in st.session_state:
-    st.session_state.exercices = [
-        {"nom": "Pompes", "type": "Répétitions"},
-        {"nom": "Gainage", "type": "Chrono (sec)"}
-    ]
+# --- CONNEXION À TURSO ---
+@st.cache_resource
+def get_db_connection():
+    url = st.secrets["TURSO_DATABASE_URL"]
+    token = st.secrets["TURSO_AUTH_TOKEN"]
+    conn = libsql.connect(database=url, auth_token=token)
+    return conn
 
-if "historique" not in st.session_state:
-    st.session_state.historique = []
+conn = get_db_connection()
 
+# Initialisation des tables SQLite dans Turso si elles n'existent pas
+def init_db():
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS exercices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT UNIQUE NOT NULL,
+            type TEXT NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS historique (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            exercice TEXT NOT NULL,
+            performance TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+
+init_db()
+
+# --- FONCTIONS DE GESTION DES DONNÉES ---
+def get_exercices():
+    cursor = conn.cursor()
+    cursor.execute("SELECT nom, type FROM exercices")
+    rows = cursor.fetchall()
+    return [{"nom": row[0], "type": row[1]} for row in rows]
+
+def ajouter_exercice_db(nom, type_ex):
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO exercices (nom, type) VALUES (?, ?)", (nom, type_ex))
+    conn.commit()
+
+def supprimer_exercice_db(nom):
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM exercices WHERE nom = ?", (nom,))
+    conn.commit()
+
+def ajouter_historique_db(date_str, exercice, performance):
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO historique (date, exercice, performance) VALUES (?, ?, ?)", (date_str, exercice, performance))
+    conn.commit()
+
+def get_historique_df():
+    df = pd.read_sql_query("SELECT date as Date, exercice as Exercice, performance as Performance FROM historique ORDER BY id DESC", conn)
+    return df
+
+def supprimer_historique_db():
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM historique")
+    conn.commit()
+
+# --- INITIALISATION SESSION STATE ---
 if "reset_counter" not in st.session_state:
     st.session_state.reset_counter = 0
 
-# Navigation principale via session_state
 if "page" not in st.session_state:
     st.session_state.page = "accueil"
 
@@ -30,7 +84,6 @@ if st.session_state.page == "accueil":
     
     st.divider()
     
-    # Les 3 boutons principaux
     if st.button("➕ Créer exercice", use_container_width=True):
         st.session_state.page = "creer_exercice"
         st.rerun()
@@ -43,7 +96,7 @@ if st.session_state.page == "accueil":
         st.session_state.page = "historique"
         st.rerun()
 
-# --- PAGE 1 : CRÉER EXERCICE ---
+# --- PAGE 1 : CRÉER / GÉRER EXERCICE ---
 elif st.session_state.page == "creer_exercice":
     if st.button("⬅️ Retour au menu"):
         st.session_state.page = "accueil"
@@ -60,15 +113,16 @@ elif st.session_state.page == "creer_exercice":
     
     if st.button("Valider l'ajout", type="primary"):
         nom_clean = nouveau_nom.strip()
-        noms_existants = [ex["nom"].lower() for ex in st.session_state.exercices]
+        exercices_existants = get_exercices()
+        noms_existants = [ex["nom"].lower() for ex in exercices_existants]
         
         if not nom_clean:
             st.error("Renseigne un nom d'exercice.")
         elif nom_clean.lower() in noms_existants:
             st.warning(f"L'exercice '{nom_clean}' existe déjà !")
         else:
-            st.session_state.exercices.append({"nom": nom_clean, "type": type_ex})
-            st.success(f"✅ Exercice '{nom_clean}' créé avec succès !")
+            ajouter_exercice_db(nom_clean, type_ex)
+            st.success(f"✅ Exercice '{nom_clean}' créé avec succès dans Turso !")
             st.toast(f"Exercice '{nom_clean}' créé !", icon="✅")
             st.session_state.reset_counter += 1
             time.sleep(1)
@@ -77,12 +131,13 @@ elif st.session_state.page == "creer_exercice":
     st.divider()
 
     st.subheader("Supprimer un exercice")
-    if st.session_state.exercices:
-        noms_existants_affichages = [ex["nom"] for ex in st.session_state.exercices]
+    exercices = get_exercices()
+    if exercices:
+        noms_existants_affichages = [ex["nom"] for ex in exercices]
         ex_a_supprimer = st.selectbox("Sélectionne l'exercice à retirer :", noms_existants_affichages, key="select_del")
         
         if st.button("🗑️ Supprimer cet exercice"):
-            st.session_state.exercices = [ex for ex in st.session_state.exercices if ex["nom"] != ex_a_supprimer]
+            supprimer_exercice_db(ex_a_supprimer)
             st.toast(f"Exercice '{ex_a_supprimer}' supprimé.", icon="🗑️")
             st.rerun()
     else:
@@ -96,16 +151,17 @@ elif st.session_state.page == "creer_seance":
         
     st.title("🏋️ Nouvelle Séance")
     
-    if not st.session_state.exercices:
+    exercices = get_exercices()
+    if not exercices:
         st.warning("Commence par créer un exercice !")
     else:
-        noms_ex = [ex["nom"] for ex in st.session_state.exercices]
+        noms_ex = [ex["nom"] for ex in exercices]
         ex_selectionnes = st.multiselect("Choisis les exercices de la séance :", noms_ex, default=noms_ex)
         
         form_data = {}
         
         for idx, nom in enumerate(ex_selectionnes, start=1):
-            ex_obj = next(item for item in st.session_state.exercices if item["nom"] == nom)
+            ex_obj = next(item for item in exercices if item["nom"] == nom)
             st.subheader(f"👉 {nom}")
             
             nb_series = st.number_input(
@@ -139,12 +195,9 @@ elif st.session_state.page == "creer_seance":
         if st.button("✅ Enregistrer la séance", type="primary", use_container_width=True):
             date_du_jour = date.today().strftime("%d/%m/%Y")
             for ex_nom, details in form_data.items():
-                st.session_state.historique.append({
-                    "Date": date_du_jour,
-                    "Exercice": ex_nom,
-                    "Performance": details
-                })
-            st.success("Séance enregistrée dans l'historique !")
+                ajouter_historique_db(date_du_jour, ex_nom, details)
+                
+            st.success("Séance enregistrée dans Turso !")
             st.toast("Séance enregistrée !", icon="🎉")
             time.sleep(1)
             st.session_state.page = "historique"
@@ -158,12 +211,12 @@ elif st.session_state.page == "historique":
         
     st.title("📊 Historique de Progression")
     
-    if st.session_state.historique:
-        df = pd.DataFrame(st.session_state.historique)
-        st.dataframe(df, use_container_width=True)
+    df_hist = get_historique_df()
+    if not df_hist.empty:
+        st.dataframe(df_hist, use_container_width=True)
         
         if st.button("🗑️ Effacer tout l'historique"):
-            st.session_state.historique = []
+            supprimer_historique_db()
             st.toast("Historique réinitialisé.", icon="🧹")
             st.rerun()
     else:
