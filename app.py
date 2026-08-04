@@ -1,70 +1,97 @@
 import streamlit as st
 
-st.set_page_config(page_title="Mes Séances", page_icon="💪", layout="centered")
+st.set_page_config(
+    page_title="Mes Séances",
+    page_icon="💪",
+    layout="centered"
+)
 
-# État de navigation
+# Navigation interne
 if "page" not in st.session_state:
     st.session_state.page = "accueil"
 
-# Style général
+# ---------------- STYLE GLOBAL ----------------
 st.markdown("""
 <style>
-.stApp { background: #000000; }
 
+/* Fond noir */
+.stApp {
+    background-color: #000000;
+}
+
+/* Supprime les marges Streamlit */
 .block-container {
-    max-width: 500px;
-    margin: auto;
-    padding-top: 5vh;
-    padding-bottom: 5vh;
+    max-width: 100% !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
 }
 
-/* Gros boutons accueil */
-.big-button button {
-    width: 100%;
-    height: 22vh;
-    margin-bottom: 3vh;
-    border-radius: 32px;
-    border: none;
-    background: #FFD400;
-    color: #000;
-    font-size: 2rem;
-    font-weight: 800;
+/* Conteneur de la page d'accueil */
+.main-menu {
+    width: 100vw;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 2vh;
 }
 
-/* Boutons classiques */
-.stButton > button {
-    width: 100%;
-    border-radius: 16px;
-    background: #FFD400;
-    color: #000;
-    font-weight: 700;
+/* Gros boutons jaunes */
+.main-menu .stButton > button {
+    width: 92vw !important;
+    max-width: 480px !important;
+    height: 26vh !important;
+    border-radius: 32px !important;
+    border: none !important;
+    background: #FFD400 !important;
+    color: #000000 !important;
+    font-size: 2.1rem !important;
+    font-weight: 800 !important;
+    box-shadow: 0 0 25px rgba(255,212,0,0.18) !important;
 }
 
+/* Hover */
+.main-menu .stButton > button:hover {
+    background: #FFE04D !important;
+    color: #000000 !important;
+}
+
+/* Texte blanc partout */
 h1,h2,h3,p,label,span,div {
     color: white !important;
 }
+
+/* Boutons des pages internes */
+.stButton > button {
+    border-radius: 16px;
+    background: #FFD400;
+    color: #000000;
+    font-weight: 700;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------- ACCUEIL ----------------
 if st.session_state.page == "accueil":
 
-    st.markdown('<div class="big-button">', unsafe_allow_html=True)
+    st.markdown('<div class="main-menu">', unsafe_allow_html=True)
+
     if st.button("EXERCICES"):
         st.session_state.page = "exercices"
         st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="big-button">', unsafe_allow_html=True)
     if st.button("SÉANCES"):
         st.session_state.page = "seances"
         st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="big-button">', unsafe_allow_html=True)
     if st.button("HISTORIQUE"):
         st.session_state.page = "historique"
         st.rerun()
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------- EXERCICES ----------------
@@ -82,8 +109,13 @@ elif st.session_state.page == "exercices":
     st.divider()
 
     st.markdown(
-        '<div style="background:#111;padding:15px;border-radius:16px;margin-bottom:10px;border:1px solid #222;"><b>Gainage</b><br>30 s</div>',
-        unsafe_allow_html=True,
+        """
+        <div style="background:#111;padding:18px;border-radius:18px;margin-bottom:12px;border:1px solid #222;">
+            <b>Gainage</b><br>
+            30 s
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
     if st.button("⬅ Retour à l'accueil"):
@@ -100,13 +132,18 @@ elif st.session_state.page == "seances":
     st.number_input("Séries", min_value=1, value=3)
 
     if st.button("Ajouter à la séance"):
-        st.success("Ajouté")
+        st.success("Exercice ajouté à la séance")
 
     st.divider()
 
     st.markdown(
-        '<div style="background:#111;padding:15px;border-radius:16px;border:1px solid #222;"><b>Séance matin</b><br>Gainage 30 s × 3 séries</div>',
-        unsafe_allow_html=True,
+        """
+        <div style="background:#111;padding:18px;border-radius:18px;border:1px solid #222;">
+            <b>Séance matin</b><br>
+            Gainage 30 s × 3 séries
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
     if st.button("Lancer la séance"):
@@ -122,8 +159,12 @@ elif st.session_state.page == "historique":
     st.title("HISTORIQUE")
 
     st.markdown(
-        '<div style="background:#111;padding:15px;border-radius:16px;border:1px solid #222;">📅 04/08/2026 — Séance matin</div>',
-        unsafe_allow_html=True,
+        """
+        <div style="background:#111;padding:18px;border-radius:18px;border:1px solid #222;">
+            📅 04/08/2026 — Séance matin
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
     if st.button("⬅ Retour à l'accueil"):
