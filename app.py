@@ -1,150 +1,96 @@
 import streamlit as st
+import pandas as pd
+from datetime import date
+import time
 
-st.set_page_config(
-    page_title="Mes Séances",
-    page_icon="💪",
-    layout="centered"
-)
+# Configuration de la page
+st.set_page_config(page_title="Mon Coach Sport", page_icon="🏋️")
 
-# Navigation interne
-if "page" not in st.session_state:
-    st.session_state.page = "accueil"
+st.title("🏋️ Mon Suivi de Sport")
 
-# Style global
-st.markdown("""
-<style>
-.stApp {
-    background-color: #000000;
-}
+# Initialisation de la base de données locale (session_state)
+if "exercices" not in st.session_state:
+    st.session_state.exercices = [
+        {"nom": "Pompes", "type": "Répétitions"},
+        {"nom": "Gainage", "type": "Chrono (sec)"}
+    ]
 
-.block-container {
-    max-width: 500px;
-    margin: auto;
-    padding-top: 2rem;
-    padding-bottom: 2rem;
-}
+if "historique" not in st.session_state:
+    st.session_state.historique = []
 
-h1, h2, h3, p, label, span, div {
-    color: white !important;
-}
+# --- ONGLETS ---
+tab1, tab2, tab3 = st.tabs(["🏋️ Entraînement", "➕ Créer Exercice", "📊 Historique"])
 
-/* Gros boutons accueil */
-.big-btn > button {
-    width: 100% !important;
-    height: 180px !important;
-    margin-bottom: 24px !important;
-    border-radius: 28px !important;
-    border: none !important;
-    background: #FFD400 !important;
-    color: #000000 !important;
-    font-size: 2rem !important;
-    font-weight: 800 !important;
-}
+# --- 1. S'ENTRAÎNER ---
+with tab1:
+    st.header("Nouvelle séance")
+    
+    if not st.session_state.exercices:
+        st.warning("Commence par créer un exercice dans l'onglet dédié !")
+    else:
+        # Sélection des exercices pour la séance
+        noms_ex = [ex["nom"] for ex in st.session_state.exercices]
+        ex_selectionnes = st.multiselect("Choisis les exercices de la séance :", noms_ex, default=noms_ex)
+        
+        form_data = {}
+        
+        for nom in ex_selectionnes:
+            ex_obj = next(item for item in st.session_state.exercices if item["nom"] == nom)
+            st.subheader(f"👉 {nom}")
+            
+            nb_series = st.number_input(f"Nombre de séries pour {nom}", min_value=1, max_value=10, value=3, key=f"series_{nom}")
+            
+            # Gestion du chrono interactif si c'est du gainage / temps
+            if "Chrono" in ex_obj["type"]:
+                durée = st.number_input(f"Objectif par série (secondes) :", min_value=5, value=30, step=5, key=f"target_{nom}")
+                if st.button(f"⏱️ Lancer le chrono ({durée}s)", key=f"btn_{nom}"):
+                    progress_bar = st.progress(0)
+                    for t in range(durée):
+                        time.sleep(1)
+                        progress_bar.progress((t + 1) / durée)
+                    st.success("Terminé ! 🔥")
+                
+                form_data[nom] = f"{nb_series} séries de {durée}s"
+            else:
+                reps = st.number_input(f"Répétitions par série :", min_value=1, value=10, key=f"reps_{nom}")
+                form_data[nom] = f"{nb_series} séries de {reps} reps"
 
-/* Boutons normaux */
-.stButton > button {
-    border-radius: 16px;
-    background: #FFD400;
-    color: #000000;
-    font-weight: 700;
-}
-</style>
-""", unsafe_allow_html=True)
+        if st.button("✅ Valider et enregistrer la séance", type="primary"):
+            date_du_jour = date.today().strftime("%d/%m/%Y")
+            for ex_nom, details in form_data.items():
+                st.session_state.historique.append({
+                    "Date": date_du_jour,
+                    "Exercice": ex_nom,
+                    "Performance": details
+                })
+            st.success("Séance enregistrée dans l'historique !")
 
-# ---------------- ACCUEIL ----------------
-if st.session_state.page == "accueil":
-
-    st.markdown('<div class="big-btn">', unsafe_allow_html=True)
-    if st.button("EXERCICES"):
-        st.session_state.page = "exercices"
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="big-btn">', unsafe_allow_html=True)
-    if st.button("SÉANCES"):
-        st.session_state.page = "seances"
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="big-btn">', unsafe_allow_html=True)
-    if st.button("HISTORIQUE"):
-        st.session_state.page = "historique"
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# ---------------- EXERCICES ----------------
-elif st.session_state.page == "exercices":
-
-    st.title("EXERCICES")
-
-    nom = st.text_input("Nom de l'exercice", placeholder="Gainage")
-    type_exo = st.selectbox("Type", ["Chrono", "Répétitions"])
-    valeur = st.number_input("Valeur cible", min_value=1, value=30)
-
+# --- 2. CRÉER UN EXERCICE ---
+with tab2:
+    st.header("Ajouter un nouvel exercice")
+    
+    nouveau_nom = st.text_input("Nom de l'exercice (ex: Squats, Fentes...)")
+    type_ex = st.radio("Type de mesure :", ["Répétitions", "Chrono (sec)"])
+    
     if st.button("Ajouter l'exercice"):
-        st.success(f"Exercice ajouté : {nom}")
+        if nouveau_nom.strip():
+            st.session_state.exercices.append({"nom": nouveau_nom, "type": type_ex})
+            st.success(f"Exercice '{nouveau_nom}' ajouté !")
+            st.rerun()
+        else:
+            st.error("Renseigne un nom d'exercice.")
 
-    st.divider()
-
-    st.markdown(
-        """
-        <div style="background:#111;padding:18px;border-radius:18px;border:1px solid #222;">
-            <b>Gainage</b><br>
-            30 s
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    if st.button("⬅ Retour à l'accueil"):
-        st.session_state.page = "accueil"
-        st.rerun()
-
-# ---------------- SÉANCES ----------------
-elif st.session_state.page == "seances":
-
-    st.title("SÉANCES")
-
-    st.text_input("Nom de la séance")
-    st.selectbox("Exercice", ["Gainage"])
-    st.number_input("Séries", min_value=1, value=3)
-
-    if st.button("Ajouter à la séance"):
-        st.success("Exercice ajouté à la séance")
-
-    st.divider()
-
-    st.markdown(
-        """
-        <div style="background:#111;padding:18px;border-radius:18px;border:1px solid #222;">
-            <b>Séance matin</b><br>
-            Gainage 30 s × 3 séries
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    if st.button("Lancer la séance"):
-        st.info("Le chrono sera ajouté ensuite")
-
-    if st.button("⬅ Retour à l'accueil"):
-        st.session_state.page = "accueil"
-        st.rerun()
-
-# ---------------- HISTORIQUE ----------------
-elif st.session_state.page == "historique":
-
-    st.title("HISTORIQUE")
-
-    st.markdown(
-        """
-        <div style="background:#111;padding:18px;border-radius:18px;border:1px solid #222;">
-            📅 04/08/2026 — Séance matin
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    if st.button("⬅ Retour à l'accueil"):
-        st.session_state.page = "accueil"
-        st.rerun()
+# --- 3. HISTORIQUE ---
+with tab3:
+    st.header("Historique de progression")
+    
+    if st.session_state.historique:
+        df = pd.DataFrame(st.session_state.historique)
+        st.dataframe(df, use_container_width=True)
+        
+        # Option pour vider l'historique
+        if st.button("🗑️ Effacer l'historique"):
+            st.session_state.historique = []
+            st.rerun()
+    else:
+        st.info("Aucune séance enregistrée pour le moment.")
