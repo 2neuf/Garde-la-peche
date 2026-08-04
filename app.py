@@ -8,28 +8,36 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+/* Fond noir */
 .stApp {
     background-color: #000000;
 }
 
+/* Zone centrale */
 .block-container {
-    padding-top: 8vh;
-    padding-bottom: 8vh;
-    max-width: 450px;
+    max-width: 500px;
+    margin: auto;
+    padding-top: 5vh;
+    padding-bottom: 5vh;
 }
 
+/* Boutons */
 .stButton > button {
-    width: 100%;
-    height: 22vh;
-    margin-bottom: 3vh;
-    border-radius: 28px;
+    display: block;
+    width: 90vw;
+    max-width: 420px;
+    height: 24vh;
+    margin: 0 auto 3vh auto;
+    border-radius: 32px;
     border: none;
     background-color: #FFD400;
     color: #000000;
     font-size: 2rem;
     font-weight: 800;
+    box-shadow: 0 0 20px rgba(255,212,0,0.15);
 }
 
+/* Hover */
 .stButton > button:hover {
     background-color: #FFE04D;
     color: #000000;
@@ -37,7 +45,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.write("")  # espace en haut
+st.write("")
 
 if st.button("EXERCICES"):
     st.switch_page("pages/1_Exercices.py")
