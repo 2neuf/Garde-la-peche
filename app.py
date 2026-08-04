@@ -43,7 +43,7 @@ def turso_query(statements):
 def init_db():
     queries = [
         "CREATE TABLE IF NOT EXISTS exercices (id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT UNIQUE NOT NULL, type TEXT NOT NULL);",
-        "CREATE TABLE IF NOT EXISTS historique (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, exercice TEXT NOT NULL, performance TEXT NOT NULL);"
+        "CREATE TABLE IF NOT EXISTS historique (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, detail TEXT NOT NULL);"
     ]
     turso_query(queries)
 
@@ -65,19 +65,18 @@ def ajouter_exercice_db(nom, type_ex):
 def supprimer_exercice_db(nom):
     turso_query([("DELETE FROM exercices WHERE nom = ?", (nom,))])
 
-def ajouter_historique_db(date_str, exercice, performance):
-    turso_query([("INSERT INTO historique (date, exercice, performance) VALUES (?, ?, ?)", (date_str, exercice, performance))])
+def ajouter_historique_db(date_str, detail_seance):
+    turso_query([("INSERT INTO historique (date, detail) VALUES (?, ?)", (date_str, detail_seance))])
 
 def get_historique_df():
-    res = turso_query(["SELECT date, exercice, performance FROM historique ORDER BY id DESC"])
+    res = turso_query(["SELECT date, detail FROM historique ORDER BY id DESC"])
     results = res["results"][0]["response"]["result"]
     rows = results.get("rows", [])
     data = []
     for row in rows:
         data.append({
             "Date": row[0]["value"],
-            "Exercice": row[1]["value"],
-            "Performance": row[2]["value"]
+            "Séance détaillée": row[1]["value"]
         })
     return pd.DataFrame(data)
 
@@ -136,7 +135,7 @@ elif st.session_state.page == "creer_exercice":
             st.warning(f"L'exercice '{nom_clean}' existe déjà !")
         else:
             ajouter_exercice_db(nom_clean, type_ex)
-            st.success(f"✅ Exercice '{nom_clean}' créé avec succès dans Turso !")
+            st.success(f"✅ Exercice '{nom_clean}' créé avec succès !")
             st.toast(f"Exercice '{nom_clean}' créé !", icon="✅")
             st.session_state.reset_counter += 1
             time.sleep(1)
@@ -172,7 +171,7 @@ elif st.session_state.page == "creer_seance":
         noms_ex = [ex["nom"] for ex in exercices]
         ex_selectionnes = st.multiselect("Choisis les exercices de la séance :", noms_ex, default=noms_ex)
         
-        form_data = {}
+        details_exercices = []
         
         for idx, nom in enumerate(ex_selectionnes, start=1):
             ex_obj = next(item for item in exercices if item["nom"] == nom)
@@ -197,25 +196,30 @@ elif st.session_state.page == "creer_seance":
                         progress_bar.progress((t + 1) / durée)
                     st.success("Terminé ! 🔥")
                 
-                form_data[nom] = f"{nb_series} séries de {durée}s"
+                details_exercices.append(f"{nom}: {nb_series}x{durée}s")
             else:
                 reps = st.number_input(
                     f"Répétitions par série :", 
                     min_value=1, value=10, 
                     key=f"reps_{nom}_{idx}"
                 )
-                form_data[nom] = f"{nb_series} séries de {reps} reps"
+                details_exercices.append(f"{nom}: {nb_series}x{reps} reps")
 
         if st.button("✅ Enregistrer la séance", type="primary", use_container_width=True):
-            date_du_jour = date.today().strftime("%d/%m/%Y")
-            for ex_nom, details in form_data.items():
-                ajouter_historique_db(date_du_jour, ex_nom, details)
+            if details_exercices:
+                date_du_jour = date.today().strftime("%d/%m/%Y")
+                # Regroupement de tous les exercices sur une seule ligne (ex: "Pompes: 3x10 reps | Gainage: 3x30s")
+                resume_seance = " | ".join(details_exercices)
                 
-            st.success("Séance enregistrée dans Turso !")
-            st.toast("Séance enregistrée !", icon="🎉")
-            time.sleep(1)
-            st.session_state.page = "historique"
-            st.rerun()
+                ajouter_historique_db(date_du_jour, resume_seance)
+                
+                st.success("Séance enregistrée !")
+                st.toast("Séance enregistrée !", icon="🎉")
+                time.sleep(1)
+                st.session_state.page = "historique"
+                st.rerun()
+            else:
+                st.error("Sélectionne au moins un exercice.")
 
 # --- PAGE 3 : HISTORIQUE ---
 elif st.session_state.page == "historique":
