@@ -19,7 +19,7 @@ if "historique" not in st.session_state:
     st.session_state.historique = []
 
 # --- ONGLETS ---
-tab1, tab2, tab3 = st.tabs(["🏋️ Entraînement", "➕ Créer Exercice", "📊 Historique"])
+tab1, tab2, tab3 = st.tabs(["🏋️ Entraînement", "⚙️ Gérer les Exercices", "📊 Historique"])
 
 # --- 1. S'ENTRAÎNER ---
 with tab1:
@@ -34,16 +34,24 @@ with tab1:
         
         form_data = {}
         
-        for nom in ex_selectionnes:
+        # Enumerate pour garant des clés uniques (idx)
+        for idx, nom in enumerate(ex_selectionnes, start=1):
             ex_obj = next(item for item in st.session_state.exercices if item["nom"] == nom)
             st.subheader(f"👉 {nom}")
             
-            nb_series = st.number_input(f"Nombre de séries pour {nom}", min_value=1, max_value=10, value=3, key=f"series_{nom}")
+            nb_series = st.number_input(
+                f"Nombre de séries pour {nom}", 
+                min_value=1, max_value=10, value=3, 
+                key=f"series_{nom}_{idx}"
+            )
             
-            # Gestion du chrono interactif si c'est du gainage / temps
             if "Chrono" in ex_obj["type"]:
-                durée = st.number_input(f"Objectif par série (secondes) :", min_value=5, value=30, step=5, key=f"target_{nom}")
-                if st.button(f"⏱️ Lancer le chrono ({durée}s)", key=f"btn_{nom}"):
+                durée = st.number_input(
+                    f"Objectif par série (secondes) :", 
+                    min_value=5, value=30, step=5, 
+                    key=f"target_{nom}_{idx}"
+                )
+                if st.button(f"⏱️ Lancer le chrono ({durée}s)", key=f"btn_{nom}_{idx}"):
                     progress_bar = st.progress(0)
                     for t in range(durée):
                         time.sleep(1)
@@ -52,7 +60,11 @@ with tab1:
                 
                 form_data[nom] = f"{nb_series} séries de {durée}s"
             else:
-                reps = st.number_input(f"Répétitions par série :", min_value=1, value=10, key=f"reps_{nom}")
+                reps = st.number_input(
+                    f"Répétitions par série :", 
+                    min_value=1, value=10, 
+                    key=f"reps_{nom}_{idx}"
+                )
                 form_data[nom] = f"{nb_series} séries de {reps} reps"
 
         if st.button("✅ Valider et enregistrer la séance", type="primary"):
@@ -63,22 +75,43 @@ with tab1:
                     "Exercice": ex_nom,
                     "Performance": details
                 })
+            st.toast("Séance enregistrée avec succès !", icon="🎉")
             st.success("Séance enregistrée dans l'historique !")
 
-# --- 2. CRÉER UN EXERCICE ---
+# --- 2. CRÉER / SUPPRIMER UN EXERCICE ---
 with tab2:
     st.header("Ajouter un nouvel exercice")
     
-    nouveau_nom = st.text_input("Nom de l'exercice (ex: Squats, Fentes...)")
+    nouveau_nom = st.text_input("Nom de l'exercice (ex: Squats, Fentes...)", key="input_nom_exercice")
     type_ex = st.radio("Type de mesure :", ["Répétitions", "Chrono (sec)"])
     
-    if st.button("Ajouter l'exercice"):
-        if nouveau_nom.strip():
-            st.session_state.exercices.append({"nom": nouveau_nom, "type": type_ex})
-            st.success(f"Exercice '{nouveau_nom}' ajouté !")
-            st.rerun()
-        else:
+    if st.button("➕ Ajouter l'exercice"):
+        nom_clean = nouveau_nom.strip()
+        noms_existants = [ex["nom"].lower() for ex in st.session_state.exercices]
+        
+        if not nom_clean:
             st.error("Renseigne un nom d'exercice.")
+        elif nom_clean.lower() in noms_existants:
+            st.warning("Cet exercice existe déjà !")
+        else:
+            st.session_state.exercices.append({"nom": nom_clean, "type": type_ex})
+            st.toast(f"Exercice '{nom_clean}' créé avec succès !", icon="✅")
+            st.session_state["input_nom_exercice"] = ""
+            st.rerun()
+
+    st.divider()
+
+    st.header("Supprimer un exercice")
+    if st.session_state.exercices:
+        noms_existants = [ex["nom"] for ex in st.session_state.exercices]
+        ex_a_supprimer = st.selectbox("Sélectionne l'exercice à retirer :", noms_existants, key="select_del")
+        
+        if st.button("🗑️ Supprimer cet exercice", type="secondary"):
+            st.session_state.exercices = [ex for ex in st.session_state.exercices if ex["nom"] != ex_a_supprimer]
+            st.toast(f"Exercice '{ex_a_supprimer}' supprimé.", icon="🗑️")
+            st.rerun()
+    else:
+        st.info("Aucun exercice disponible à la suppression.")
 
 # --- 3. HISTORIQUE ---
 with tab3:
@@ -88,9 +121,9 @@ with tab3:
         df = pd.DataFrame(st.session_state.historique)
         st.dataframe(df, use_container_width=True)
         
-        # Option pour vider l'historique
-        if st.button("🗑️ Effacer l'historique"):
+        if st.button("🗑️ Effacer tout l'historique"):
             st.session_state.historique = []
+            st.toast("Historique réinitialisé.", icon="🧹")
             st.rerun()
     else:
         st.info("Aucune séance enregistrée pour le moment.")
