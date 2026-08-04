@@ -6,8 +6,6 @@ import time
 # Configuration de la page
 st.set_page_config(page_title="Mon Coach Sport", page_icon="🏋️")
 
-st.title("🏋️ Mon Suivi de Sport")
-
 # Initialisation des données locales
 if "exercices" not in st.session_state:
     st.session_state.exercices = [
@@ -18,18 +16,88 @@ if "exercices" not in st.session_state:
 if "historique" not in st.session_state:
     st.session_state.historique = []
 
-if "tmp_nom_exercice" not in st.session_state:
-    st.session_state.tmp_nom_exercice = ""
+if "reset_counter" not in st.session_state:
+    st.session_state.reset_counter = 0
 
-# --- ONGLETS ---
-tab1, tab2, tab3 = st.tabs(["🏋️ Entraînement", "⚙️ Gérer les Exercices", "📊 Historique"])
+# Navigation principale via session_state
+if "page" not in st.session_state:
+    st.session_state.page = "accueil"
 
-# --- 1. S'ENTRAÎNER ---
-with tab1:
-    st.header("Nouvelle séance")
+# --- PAGE D'ACCUEIL ---
+if st.session_state.page == "accueil":
+    st.title("🏋️ Mon Suivi de Sport")
+    st.write("Que veux-tu faire aujourd'hui ?")
+    
+    st.divider()
+    
+    # Les 3 boutons principaux
+    if st.button("➕ Créer exercice", use_container_width=True):
+        st.session_state.page = "creer_exercice"
+        st.rerun()
+        
+    if st.button("🏋️ Créer séance", type="primary", use_container_width=True):
+        st.session_state.page = "creer_seance"
+        st.rerun()
+        
+    if st.button("📊 Voir historique", use_container_width=True):
+        st.session_state.page = "historique"
+        st.rerun()
+
+# --- PAGE 1 : CRÉER EXERCICE ---
+elif st.session_state.page == "creer_exercice":
+    if st.button("⬅️ Retour au menu"):
+        st.session_state.page = "accueil"
+        st.rerun()
+        
+    st.title("➕ Gérer les Exercices")
+    
+    st.subheader("Ajouter un exercice")
+    nouveau_nom = st.text_input(
+        "Nom de l'exercice (ex: Squats, Fentes...)", 
+        key=f"input_nom_{st.session_state.reset_counter}"
+    )
+    type_ex = st.radio("Type de mesure :", ["Répétitions", "Chrono (sec)"])
+    
+    if st.button("Valider l'ajout", type="primary"):
+        nom_clean = nouveau_nom.strip()
+        noms_existants = [ex["nom"].lower() for ex in st.session_state.exercices]
+        
+        if not nom_clean:
+            st.error("Renseigne un nom d'exercice.")
+        elif nom_clean.lower() in noms_existants:
+            st.warning(f"L'exercice '{nom_clean}' existe déjà !")
+        else:
+            st.session_state.exercices.append({"nom": nom_clean, "type": type_ex})
+            st.success(f"✅ Exercice '{nom_clean}' créé avec succès !")
+            st.toast(f"Exercice '{nom_clean}' créé !", icon="✅")
+            st.session_state.reset_counter += 1
+            time.sleep(1)
+            st.rerun()
+
+    st.divider()
+
+    st.subheader("Supprimer un exercice")
+    if st.session_state.exercices:
+        noms_existants_affichages = [ex["nom"] for ex in st.session_state.exercices]
+        ex_a_supprimer = st.selectbox("Sélectionne l'exercice à retirer :", noms_existants_affichages, key="select_del")
+        
+        if st.button("🗑️ Supprimer cet exercice"):
+            st.session_state.exercices = [ex for ex in st.session_state.exercices if ex["nom"] != ex_a_supprimer]
+            st.toast(f"Exercice '{ex_a_supprimer}' supprimé.", icon="🗑️")
+            st.rerun()
+    else:
+        st.info("Aucun exercice disponible.")
+
+# --- PAGE 2 : CRÉER SÉANCE ---
+elif st.session_state.page == "creer_seance":
+    if st.button("⬅️ Retour au menu"):
+        st.session_state.page = "accueil"
+        st.rerun()
+        
+    st.title("🏋️ Nouvelle Séance")
     
     if not st.session_state.exercices:
-        st.warning("Commence par créer un exercice dans l'onglet dédié !")
+        st.warning("Commence par créer un exercice !")
     else:
         noms_ex = [ex["nom"] for ex in st.session_state.exercices]
         ex_selectionnes = st.multiselect("Choisis les exercices de la séance :", noms_ex, default=noms_ex)
@@ -68,7 +136,7 @@ with tab1:
                 )
                 form_data[nom] = f"{nb_series} séries de {reps} reps"
 
-        if st.button("✅ Valider et enregistrer la séance", type="primary"):
+        if st.button("✅ Enregistrer la séance", type="primary", use_container_width=True):
             date_du_jour = date.today().strftime("%d/%m/%Y")
             for ex_nom, details in form_data.items():
                 st.session_state.historique.append({
@@ -76,49 +144,19 @@ with tab1:
                     "Exercice": ex_nom,
                     "Performance": details
                 })
-            st.toast("Séance enregistrée avec succès !", icon="🎉")
-
-# --- 2. CRÉER / SUPPRIMER UN EXERCICE ---
-with tab2:
-    st.header("Ajouter un nouvel exercice")
-    
-    nouveau_nom = st.text_input(
-        "Nom de l'exercice (ex: Squats, Fentes...)", 
-        value=st.session_state.tmp_nom_exercice
-    )
-    type_ex = st.radio("Type de mesure :", ["Répétitions", "Chrono (sec)"])
-    
-    if st.button("➕ Ajouter l'exercice"):
-        nom_clean = nouveau_nom.strip()
-        # Liste des noms existants en minuscules
-        noms_existants = [ex["nom"].lower() for ex in st.session_state.exercices]
-        
-        if not nom_clean:
-            st.error("Renseigne un nom d'exercice.")
-        elif nom_clean.lower() in noms_existants:
-            # Blocage des doublons ici
-            st.warning(f"L'exercice '{nom_clean}' existe déjà !")
-        else:
-            st.session_state.exercices.append({"nom": nom_clean, "type": type_ex})
-            st.toast(f"Exercice '{nom_clean}' créé avec succès !", icon="✅")
-            st.session_state.tmp_nom_exercice = ""
+            st.success("Séance enregistrée dans l'historique !")
+            st.toast("Séance enregistrée !", icon="🎉")
+            time.sleep(1)
+            st.session_state.page = "historique"
             st.rerun()
 
-    st.divider()
-
-    st.header("Supprimer un exercice")
-    if st.session_state.exercices:
-        noms_existants_affichages = [ex["nom"] for ex in st.session_state.exercices]
-        ex_a_supprimer = st.selectbox("Sélectionne l'exercice à retirer :", noms_existants_affichages, key="select_del")
+# --- PAGE 3 : HISTORIQUE ---
+elif st.session_state.page == "historique":
+    if st.button("⬅️ Retour au menu"):
+        st.session_state.page = "accueil"
+        st.rerun()
         
-        if st.button("🗑️ Supprimer cet exercice"):
-            st.session_state.exercices = [ex for ex in st.session_state.exercices if ex["nom"] != ex_a_supprimer]
-            st.toast(f"Exercice '{ex_a_supprimer}' supprimé.", icon="🗑️")
-            st.rerun()
-
-# --- 3. HISTORIQUE ---
-with tab3:
-    st.header("Historique de progression")
+    st.title("📊 Historique de Progression")
     
     if st.session_state.historique:
         df = pd.DataFrame(st.session_state.historique)
