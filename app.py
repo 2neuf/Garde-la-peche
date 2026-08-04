@@ -6,23 +6,16 @@ st.set_page_config(
     layout="centered"
 )
 
-# Style de la page d'accueil
 st.markdown("""
 <style>
 .stApp {
     background-color: #000000;
 }
 
-.main-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 92vh;
-}
-
-.menu {
-    width: 100%;
-    max-width: 420px;
+.block-container {
+    padding-top: 8vh;
+    padding-bottom: 8vh;
+    max-width: 450px;
 }
 
 .stButton > button {
@@ -35,7 +28,6 @@ st.markdown("""
     color: #000000;
     font-size: 2rem;
     font-weight: 800;
-    transition: 0.2s;
 }
 
 .stButton > button:hover {
@@ -45,7 +37,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-container"><div class="menu">', unsafe_allow_html=True)
+st.write("")  # espace en haut
 
 if st.button("EXERCICES"):
     st.switch_page("pages/1_Exercices.py")
@@ -55,5 +47,3 @@ if st.button("SÉANCES"):
 
 if st.button("HISTORIQUE"):
     st.switch_page("pages/3_Historique.py")
-
-st.markdown('</div></div>', unsafe_allow_html=True)
