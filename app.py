@@ -2,32 +2,34 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 import time
-import libsql_experimental as libsql
+import libsql_client
 
 # Configuration de la page
 st.set_page_config(page_title="Mon Coach Sport", page_icon="🏋️")
 
-# --- CONNEXION À TURSO ---
+# --- CONNEXION À TURSO VIA LIBSQL-CLIENT ---
 @st.cache_resource
-def get_db_connection():
+def get_client():
     url = st.secrets["TURSO_DATABASE_URL"]
     token = st.secrets["TURSO_AUTH_TOKEN"]
-    conn = libsql.connect(database=url, auth_token=token)
-    return conn
+    # Conversion de l'URL 'libsql://' vers 'https://' pour l'API Https/Hrana
+    if url.startswith("libsql://"):
+        url = url.replace("libsql://", "https://")
+    client = libsql_client.create_client_sync(url=url, auth_token=token)
+    return client
 
-conn = get_db_connection()
+client = get_client()
 
-# Initialisation des tables SQLite dans Turso si elles n'existent pas
+# Initialisation des tables SQLite dans Turso
 def init_db():
-    cursor = conn.cursor()
-    cursor.execute("""
+    client.execute("""
         CREATE TABLE IF NOT EXISTS exercices (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nom TEXT UNIQUE NOT NULL,
             type TEXT NOT NULL
         )
     """)
-    cursor.execute("""
+    client.execute("""
         CREATE TABLE IF NOT EXISTS historique (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
@@ -35,40 +37,30 @@ def init_db():
             performance TEXT NOT NULL
         )
     """)
-    conn.commit()
 
 init_db()
 
 # --- FONCTIONS DE GESTION DES DONNÉES ---
 def get_exercices():
-    cursor = conn.cursor()
-    cursor.execute("SELECT nom, type FROM exercices")
-    rows = cursor.fetchall()
-    return [{"nom": row[0], "type": row[1]} for row in rows]
+    rs = client.execute("SELECT nom, type FROM exercices")
+    return [{"nom": row[0], "type": row[1]} for row in rs.rows]
 
 def ajouter_exercice_db(nom, type_ex):
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO exercices (nom, type) VALUES (?, ?)", (nom, type_ex))
-    conn.commit()
+    client.execute("INSERT INTO exercices (nom, type) VALUES (?, ?)", (nom, type_ex))
 
 def supprimer_exercice_db(nom):
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM exercices WHERE nom = ?", (nom,))
-    conn.commit()
+    client.execute("DELETE FROM exercices WHERE nom = ?", (nom,))
 
 def ajouter_historique_db(date_str, exercice, performance):
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO historique (date, exercice, performance) VALUES (?, ?, ?)", (date_str, exercice, performance))
-    conn.commit()
+    client.execute("INSERT INTO historique (date, exercice, performance) VALUES (?, ?, ?)", (date_str, exercice, performance))
 
 def get_historique_df():
-    df = pd.read_sql_query("SELECT date as Date, exercice as Exercice, performance as Performance FROM historique ORDER BY id DESC", conn)
-    return df
+    rs = client.execute("SELECT date as Date, exercice as Exercice, performance as Performance FROM historique ORDER BY id DESC")
+    data = [dict(zip(["Date", "Exercice", "Performance"], row)) for row in rs.rows]
+    return pd.DataFrame(data)
 
 def supprimer_historique_db():
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM historique")
-    conn.commit()
+    client.execute("DELETE FROM historique")
 
 # --- INITIALISATION SESSION STATE ---
 if "reset_counter" not in st.session_state:
