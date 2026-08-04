@@ -8,7 +8,7 @@ st.set_page_config(page_title="Mon Coach Sport", page_icon="🏋️")
 
 st.title("🏋️ Mon Suivi de Sport")
 
-# Initialisation de la base de données locale (session_state)
+# Initialisation des données locales
 if "exercices" not in st.session_state:
     st.session_state.exercices = [
         {"nom": "Pompes", "type": "Répétitions"},
@@ -17,6 +17,9 @@ if "exercices" not in st.session_state:
 
 if "historique" not in st.session_state:
     st.session_state.historique = []
+
+if "tmp_nom_exercice" not in st.session_state:
+    st.session_state.tmp_nom_exercice = ""
 
 # --- ONGLETS ---
 tab1, tab2, tab3 = st.tabs(["🏋️ Entraînement", "⚙️ Gérer les Exercices", "📊 Historique"])
@@ -28,13 +31,11 @@ with tab1:
     if not st.session_state.exercices:
         st.warning("Commence par créer un exercice dans l'onglet dédié !")
     else:
-        # Sélection des exercices pour la séance
         noms_ex = [ex["nom"] for ex in st.session_state.exercices]
         ex_selectionnes = st.multiselect("Choisis les exercices de la séance :", noms_ex, default=noms_ex)
         
         form_data = {}
         
-        # Enumerate pour garant des clés uniques (idx)
         for idx, nom in enumerate(ex_selectionnes, start=1):
             ex_obj = next(item for item in st.session_state.exercices if item["nom"] == nom)
             st.subheader(f"👉 {nom}")
@@ -76,42 +77,44 @@ with tab1:
                     "Performance": details
                 })
             st.toast("Séance enregistrée avec succès !", icon="🎉")
-            st.success("Séance enregistrée dans l'historique !")
 
 # --- 2. CRÉER / SUPPRIMER UN EXERCICE ---
 with tab2:
     st.header("Ajouter un nouvel exercice")
     
-    nouveau_nom = st.text_input("Nom de l'exercice (ex: Squats, Fentes...)", key="input_nom_exercice")
+    nouveau_nom = st.text_input(
+        "Nom de l'exercice (ex: Squats, Fentes...)", 
+        value=st.session_state.tmp_nom_exercice
+    )
     type_ex = st.radio("Type de mesure :", ["Répétitions", "Chrono (sec)"])
     
     if st.button("➕ Ajouter l'exercice"):
         nom_clean = nouveau_nom.strip()
+        # Liste des noms existants en minuscules
         noms_existants = [ex["nom"].lower() for ex in st.session_state.exercices]
         
         if not nom_clean:
             st.error("Renseigne un nom d'exercice.")
         elif nom_clean.lower() in noms_existants:
-            st.warning("Cet exercice existe déjà !")
+            # Blocage des doublons ici
+            st.warning(f"L'exercice '{nom_clean}' existe déjà !")
         else:
             st.session_state.exercices.append({"nom": nom_clean, "type": type_ex})
             st.toast(f"Exercice '{nom_clean}' créé avec succès !", icon="✅")
-            st.session_state["input_nom_exercice"] = ""
+            st.session_state.tmp_nom_exercice = ""
             st.rerun()
 
     st.divider()
 
     st.header("Supprimer un exercice")
     if st.session_state.exercices:
-        noms_existants = [ex["nom"] for ex in st.session_state.exercices]
-        ex_a_supprimer = st.selectbox("Sélectionne l'exercice à retirer :", noms_existants, key="select_del")
+        noms_existants_affichages = [ex["nom"] for ex in st.session_state.exercices]
+        ex_a_supprimer = st.selectbox("Sélectionne l'exercice à retirer :", noms_existants_affichages, key="select_del")
         
-        if st.button("🗑️ Supprimer cet exercice", type="secondary"):
+        if st.button("🗑️ Supprimer cet exercice"):
             st.session_state.exercices = [ex for ex in st.session_state.exercices if ex["nom"] != ex_a_supprimer]
             st.toast(f"Exercice '{ex_a_supprimer}' supprimé.", icon="🗑️")
             st.rerun()
-    else:
-        st.info("Aucun exercice disponible à la suppression.")
 
 # --- 3. HISTORIQUE ---
 with tab3:
