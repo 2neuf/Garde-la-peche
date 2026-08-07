@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import date
 import time
 import requests
+import re
 
 # Configuration de la page
 st.set_page_config(page_title="Mon Coach Sport", page_icon="🏋️")
@@ -40,41 +41,28 @@ def turso_query(statements):
 # Initialisation des tables SQLite dans Turso
 def init_db():
     queries = [
-        "CREATE TABLE IF NOT EXISTS exercices (id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT UNIQUE NOT NULL, type TEXT NOT NULL, def_series INTEGER DEFAULT 3, def_valeur INTEGER DEFAULT 10);",
+        "CREATE TABLE IF NOT EXISTS exercices (id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT UNIQUE NOT NULL, type TEXT NOT NULL);",
         "CREATE TABLE IF NOT EXISTS historique (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, detail TEXT NOT NULL);"
     ]
     turso_query(queries)
-    
-    # Migration douce si les colonnes manquent sur les anciennes tables
-    try:
-        turso_query(["ALTER TABLE exercices ADD COLUMN def_series INTEGER DEFAULT 3;"])
-        turso_query(["ALTER TABLE exercices ADD COLUMN def_valeur INTEGER DEFAULT 10;"])
-    except Exception:
-        pass
 
 init_db()
 
 # --- FONCTIONS BASE DE DONNÉES ---
 def get_exercices():
-    res = turso_query(["SELECT nom, type, def_series, def_valeur FROM exercices"])
+    res = turso_query(["SELECT nom, type FROM exercices"])
     results = res["results"][0]["response"].get("result", {})
     rows = results.get("rows", [])
     exercices = []
     for row in rows:
         exercices.append({
             "nom": row[0]["value"],
-            "type": row[1]["value"],
-            "def_series": int(row[2]["value"]) if len(row) > 2 and row[2]["value"] is not None else 3,
-            "def_valeur": int(row[3]["value"]) if len(row) > 3 and row[3]["value"] is not None else 10
+            "type": row[1]["value"]
         })
     return exercices
 
 def ajouter_exercice_db(nom, type_ex):
-    default_valeur = 30 if "Chrono" in type_ex else 10
-    turso_query([("INSERT INTO exercices (nom, type, def_series, def_valeur) VALUES (?, ?, 3, ?)", (nom, type_ex, default_valeur))])
-
-def maj_defaults_exercice_db(nom, series, valeur):
-    turso_query([("UPDATE exercices SET def_series = ?, def_valeur = ? WHERE nom = ?", (series, valeur, nom))])
+    turso_query([("INSERT INTO exercices (nom, type) VALUES (?, ?)", (nom, type_ex))])
 
 def supprimer_exercice_db(nom):
     turso_query([("DELETE FROM exercices WHERE nom = ?", (nom,))])
@@ -97,12 +85,37 @@ def get_historique_df():
     except Exception:
         return pd.DataFrame(columns=["Date", "Séance détaillée"])
 
+def get_derniers_reglages():
+    """Lit la dernière séance dans l'historique et extrait les séries/répétitions pour chaque exercice."""
+    reglages = {}
+    try:
+        res = turso_query(["SELECT detail FROM historique ORDER BY id DESC LIMIT 1"])
+        results = res["results"][0]["response"].get("result", {})
+        rows = results.get("rows", [])
+        if rows and rows[0]:
+            dernier_detail = rows[0][0]["value"] # ex: "Gainage: 5x30s | Pompe: 4x12 reps"
+            items = dernier_detail.split(" | ")
+            for item in items:
+                # Format attendu : "Nom: NxM"
+                match = re.match(r"^(.+):\s*(\d+)x(\d+)", item.strip())
+                if match:
+                    nom_ex = match.group(1).strip()
+                    series = int(match.group(2))
+                    valeur = int(match.group(3))
+                    reglages[nom_ex] = (series, valeur)
+    except Exception:
+        pass
+    return reglages
+
 def supprimer_historique_db():
     turso_query(["DELETE FROM historique"])
 
 # --- SESSION STATE ---
 if "reset_counter" not in st.session_state:
     st.session_state.reset_counter = 0
+
+if "seance_version" not in st.session_state:
+    st.session_state.seance_version = 0
 
 if "page" not in st.session_state:
     st.session_state.page = "accueil"
@@ -186,22 +199,29 @@ elif st.session_state.page == "creer_seance":
         noms_ex = [ex["nom"] for ex in exercices]
         ex_selectionnes = st.multiselect("Choisis les exercices de la séance :", noms_ex, default=noms_ex)
         
+        # Récupération des réglages de la dernière séance dans l'historique
+        derniers_reglages = get_derniers_reglages()
+        
         details_exercices = []
-        config_a_sauvegarder = []
-        keys_a_effacer = []
+        v = st.session_state.seance_version
         
         for idx, nom in enumerate(ex_selectionnes, start=1):
             ex_obj = next(item for item in exercices if item["nom"] == nom)
             st.subheader(f"👉 {nom}")
             
-            key_series = f"series_{nom}_{idx}"
-            key_valeur = f"valeur_{nom}_{idx}"
-            keys_a_effacer.extend([key_series, key_valeur])
+            # Valeurs par défaut extraites de la dernière séance (ou valeurs de base)
+            default_series, default_valeur = derniers_reglages.get(
+                nom, 
+                (3, 30 if "Chrono" in ex_obj["type"] else 10)
+            )
+            
+            key_series = f"series_{nom}_v{v}"
+            key_valeur = f"valeur_{nom}_v{v}"
             
             nb_series = st.number_input(
                 f"Nombre de séries pour {nom}", 
                 min_value=1, max_value=10, 
-                value=ex_obj["def_series"], 
+                value=default_series, 
                 key=key_series
             )
             
@@ -209,11 +229,11 @@ elif st.session_state.page == "creer_seance":
                 durée = st.number_input(
                     f"Objectif par série (secondes) :", 
                     min_value=5, 
-                    value=ex_obj["def_valeur"], 
+                    value=default_valeur, 
                     step=5, 
                     key=key_valeur
                 )
-                if st.button(f"⏱️ Lancer le chrono ({durée}s)", key=f"btn_{nom}_{idx}"):
+                if st.button(f"⏱️ Lancer le chrono ({durée}s)", key=f"btn_{nom}_{idx}_v{v}"):
                     progress_bar = st.progress(0)
                     for t in range(durée):
                         time.sleep(1)
@@ -221,33 +241,25 @@ elif st.session_state.page == "creer_seance":
                     st.success("Terminé ! 🔥")
                 
                 details_exercices.append(f"{nom}: {nb_series}x{durée}s")
-                config_a_sauvegarder.append((nom, nb_series, durée))
             else:
                 reps = st.number_input(
                     f"Répétitions par série :", 
                     min_value=1, 
-                    value=ex_obj["def_valeur"], 
+                    value=default_valeur, 
                     key=key_valeur
                 )
                 details_exercices.append(f"{nom}: {nb_series}x{reps} reps")
-                config_a_sauvegarder.append((nom, nb_series, reps))
 
         if st.button("✅ Enregistrer la séance", type="primary", use_container_width=True):
             if details_exercices:
                 date_du_jour = date.today().strftime("%d/%m/%Y")
                 resume_seance = " | ".join(details_exercices)
                 
-                # 1. Enregistrement en base de données
+                # 1. Enregistrement dans l'historique
                 ajouter_historique_db(date_du_jour, resume_seance)
                 
-                # 2. Sauvegarde des nouvelles valeurs par défaut dans Turso
-                for nom_ex, series, val in config_a_sauvegarder:
-                    maj_defaults_exercice_db(nom_ex, series, val)
-                
-                # 3. Nettoyage du session_state pour forcer le chargement depuis Turso
-                for key in keys_a_effacer:
-                    if key in st.session_state:
-                        del st.session_state[key]
+                # 2. Incrémentation pour régénérer des champs neufs à la prochaine séance
+                st.session_state.seance_version += 1
                 
                 st.success("Séance enregistrée !")
                 st.toast("Séance enregistrée !", icon="🎉")
