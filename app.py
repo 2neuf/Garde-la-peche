@@ -9,11 +9,9 @@ st.set_page_config(page_title="Mon Coach Sport", page_icon="🏋️")
 
 # --- FONCTION REQUÊTE TURSO API HTTP ---
 def turso_query(statements):
-    """Exécute des requêtes SQL sur la base Turso via l'API HTTP Pipeline."""
     url = st.secrets["TURSO_DATABASE_URL"]
     token = st.secrets["TURSO_AUTH_TOKEN"]
     
-    # Nettoyage de l'URL pour l'API HTTP
     url = url.replace("libsql://", "https://").replace("https://https://", "https://")
     api_url = f"{url}/v2/pipeline"
     
@@ -39,29 +37,44 @@ def turso_query(statements):
     response.raise_for_status()
     return response.json()
 
-# Initialisation des tables SQLite dans Turso
+# Initialisation des tables
 def init_db():
     queries = [
-        "CREATE TABLE IF NOT EXISTS exercices (id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT UNIQUE NOT NULL, type TEXT NOT NULL);",
+        "CREATE TABLE IF NOT EXISTS exercices (id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT UNIQUE NOT NULL, type TEXT NOT NULL, def_series INTEGER DEFAULT 3, def_valeur INTEGER DEFAULT 10);",
         "CREATE TABLE IF NOT EXISTS historique (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, detail TEXT NOT NULL);"
     ]
     turso_query(queries)
-
+    
+    # Sécurité pour ajouter les colonnes si la table existait déjà
+    try:
+        turso_query(["ALTER TABLE exercices ADD COLUMN def_series INTEGER DEFAULT 3;"])
+        turso_query(["ALTER TABLE exercices ADD COLUMN def_valeur INTEGER DEFAULT 10;"])
+    except Exception:
+        pass
 
 init_db()
 
-# --- FONCTIONS DE GESTION DES DONNÉES ---
+# --- FONCTIONS BASE DE DONNÉES ---
 def get_exercices():
-    res = turso_query(["SELECT nom, type FROM exercices"])
-    results = res["results"][0]["response"]["result"]
+    res = turso_query(["SELECT nom, type, def_series, def_valeur FROM exercices"])
+    results = res["results"][0]["response"].get("result", {})
     rows = results.get("rows", [])
     exercices = []
     for row in rows:
-        exercices.append({"nom": row[0]["value"], "type": row[1]["value"]})
+        exercices.append({
+            "nom": row[0]["value"],
+            "type": row[1]["value"],
+            "def_series": int(row[2]["value"]) if len(row) > 2 and row[2]["value"] is not None else 3,
+            "def_valeur": int(row[3]["value"]) if len(row) > 3 and row[3]["value"] is not None else 10
+        })
     return exercices
 
 def ajouter_exercice_db(nom, type_ex):
-    turso_query([("INSERT INTO exercices (nom, type) VALUES (?, ?)", (nom, type_ex))])
+    default_valeur = 30 if "Chrono" in type_ex else 10
+    turso_query([("INSERT INTO exercices (nom, type, def_series, def_valeur) VALUES (?, ?, 3, ?)", (nom, type_ex, default_valeur))])
+
+def maj_defaults_exercice_db(nom, series, valeur):
+    turso_query([("UPDATE exercices SET def_series = ?, def_valeur = ? WHERE nom = ?", (series, valeur, nom))])
 
 def supprimer_exercice_db(nom):
     turso_query([("DELETE FROM exercices WHERE nom = ?", (nom,))])
@@ -70,21 +83,24 @@ def ajouter_historique_db(date_str, detail_seance):
     turso_query([("INSERT INTO historique (date, detail) VALUES (?, ?)", (date_str, detail_seance))])
 
 def get_historique_df():
-    res = turso_query(["SELECT date, detail FROM historique ORDER BY id DESC"])
-    results = res["results"][0]["response"]["result"]
-    rows = results.get("rows", [])
-    data = []
-    for row in rows:
-        data.append({
-            "Date": row[0]["value"],
-            "Séance détaillée": row[1]["value"]
-        })
-    return pd.DataFrame(data)
+    try:
+        res = turso_query(["SELECT date, detail FROM historique ORDER BY id DESC"])
+        results = res["results"][0]["response"].get("result", {})
+        rows = results.get("rows", [])
+        data = []
+        for row in rows:
+            data.append({
+                "Date": row[0]["value"],
+                "Séance détaillée": row[1]["value"]
+            })
+        return pd.DataFrame(data)
+    except Exception:
+        return pd.DataFrame(columns=["Date", "Séance détaillée"])
 
 def supprimer_historique_db():
     turso_query(["DELETE FROM historique"])
 
-# --- INITIALISATION SESSION STATE ---
+# --- SESSION STATE ---
 if "reset_counter" not in st.session_state:
     st.session_state.reset_counter = 0
 
@@ -95,7 +111,6 @@ if "page" not in st.session_state:
 if st.session_state.page == "accueil":
     st.title("🏋️ Mon Suivi de Sport")
     st.write("Que veux-tu faire aujourd'hui ?")
-    
     st.divider()
     
     if st.button("➕ Créer exercice", use_container_width=True):
@@ -117,8 +132,8 @@ elif st.session_state.page == "creer_exercice":
         st.rerun()
         
     st.title("➕ Gérer les Exercices")
-    
     st.subheader("Ajouter un exercice")
+    
     nouveau_nom = st.text_input(
         "Nom de l'exercice (ex: Squats, Fentes...)", 
         key=f"input_nom_{st.session_state.reset_counter}"
@@ -143,7 +158,6 @@ elif st.session_state.page == "creer_exercice":
             st.rerun()
 
     st.divider()
-
     st.subheader("Supprimer un exercice")
     exercices = get_exercices()
     if exercices:
@@ -173,21 +187,26 @@ elif st.session_state.page == "creer_seance":
         ex_selectionnes = st.multiselect("Choisis les exercices de la séance :", noms_ex, default=noms_ex)
         
         details_exercices = []
+        config_a_sauvegarder = []
         
         for idx, nom in enumerate(ex_selectionnes, start=1):
             ex_obj = next(item for item in exercices if item["nom"] == nom)
             st.subheader(f"👉 {nom}")
             
+            # Reprise des valeurs par défaut de la dernière séance
             nb_series = st.number_input(
                 f"Nombre de séries pour {nom}", 
-                min_value=1, max_value=10, value=3, 
+                min_value=1, max_value=10, 
+                value=ex_obj["def_series"], 
                 key=f"series_{nom}_{idx}"
             )
             
             if "Chrono" in ex_obj["type"]:
                 durée = st.number_input(
                     f"Objectif par série (secondes) :", 
-                    min_value=5, value=30, step=5, 
+                    min_value=5, 
+                    value=ex_obj["def_valeur"], 
+                    step=5, 
                     key=f"target_{nom}_{idx}"
                 )
                 if st.button(f"⏱️ Lancer le chrono ({durée}s)", key=f"btn_{nom}_{idx}"):
@@ -198,21 +217,28 @@ elif st.session_state.page == "creer_seance":
                     st.success("Terminé ! 🔥")
                 
                 details_exercices.append(f"{nom}: {nb_series}x{durée}s")
+                config_a_sauvegarder.append((nom, nb_series, durée))
             else:
                 reps = st.number_input(
                     f"Répétitions par série :", 
-                    min_value=1, value=10, 
+                    min_value=1, 
+                    value=ex_obj["def_valeur"], 
                     key=f"reps_{nom}_{idx}"
                 )
                 details_exercices.append(f"{nom}: {nb_series}x{reps} reps")
+                config_a_sauvegarder.append((nom, nb_series, reps))
 
         if st.button("✅ Enregistrer la séance", type="primary", use_container_width=True):
             if details_exercices:
                 date_du_jour = date.today().strftime("%d/%m/%Y")
-                # Regroupement de tous les exercices sur une seule ligne (ex: "Pompes: 3x10 reps | Gainage: 3x30s")
                 resume_seance = " | ".join(details_exercices)
                 
+                # 1. Enregistrement de l'historique
                 ajouter_historique_db(date_du_jour, resume_seance)
+                
+                # 2. Sauvegarde de la config pour la prochaine fois
+                for nom_ex, series, val in config_a_sauvegarder:
+                    maj_defaults_exercice_db(nom_ex, series, val)
                 
                 st.success("Séance enregistrée !")
                 st.toast("Séance enregistrée !", icon="🎉")
